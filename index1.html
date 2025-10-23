@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Slivers with Big Canvas Focus</title>
+<style>
+  :root{
+    --slivers: 20;
+    --height: 100vh;
+
+    /* thinner sides + barely-wider active */
+    --thin: .55fr;          /* left/right slivers */
+    --active: .95fr;        /* clicked sliver (kept subtle) */
+    --rest: 1fr;            /* layout before any click */
+
+    /* BIG canvas slot */
+    --focus-gap: min(72vw, 1200px);
+
+    /* motion */
+    --t: 480ms;
+    --e: cubic-bezier(.2,.75,.2,1);
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#000;overflow:hidden}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#fff}
+
+  .stage{height:var(--height);display:flex;align-items:stretch}
+  .slices{
+    width:100vw;height:100%;
+    display:grid; grid-template-columns:repeat(var(--slivers), var(--rest));
+    transition:grid-template-columns var(--t) var(--e);
+    will-change:grid-template-columns;
+  }
+
+  .sliver{
+    background-image:url("image.png");
+    background-repeat:no-repeat;
+    background-size:calc(var(--slivers)*100%) 100%;
+    cursor:pointer;
+    transition:filter var(--t) var(--e), transform 360ms ease;
+    filter:brightness(.98) contrast(1.03);
+  }
+
+  /* smooth, minimal hover */
+  .sliver:hover{ filter:brightness(1.06) contrast(1.06); transform:scale(1.01); }
+  .sliver.is-active{ filter:brightness(1.08) contrast(1.08); z-index:2; }
+
+  /* the spacer track becomes our big canvas */
+  .focus-spacer{
+    position:relative;
+    background:transparent;
+    pointer-events:auto;
+    overflow:hidden;
+  }
+
+  /* canvas content */
+  .focus-content{
+    position:absolute; inset:0;
+    display:grid; place-items:center;
+    background:#111;
+  }
+  /* use your canvas.png if present */
+  .focus-content.has-img{ background:#111 center/cover no-repeat url("canvas.png"); }
+  .focus-placeholder{
+    width:min(1100px, 92%); aspect-ratio:16/9;
+    border-radius:20px; background:#e5e5e5;
+    color:#111; display:grid; place-items:center;
+    box-shadow:0 30px 80px rgba(0,0,0,.45);
+    text-align:center; padding:24px;
+    font-size:clamp(18px,2.6vw,32px); font-weight:800;
+    letter-spacing:.02em;
+  }
+
+  @media (max-width: 700px){
+    :root{ --thin:.65fr; --active:.9fr; --focus-gap:min(85vw, 900px); }
+    .focus-placeholder{ border-radius:14px; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="slices" id="slices"></div>
+</div>
+
+<script>
+  const SLIVERS = 20;
+  const grid = document.getElementById('slices');
+
+  // build slivers
+  const slivers = [];
+  for (let i = 0; i < SLIVERS; i++) {
+    const d = document.createElement('div');
+    d.className = 'sliver';
+    d.dataset.i = i;
+    d.style.backgroundPosition = `${(i/(SLIVERS-1))*100}% 50%`;
+    d.addEventListener('click', () => activate(i));
+    grid.appendChild(d);
+    slivers.push(d);
+  }
+
+  // spacer that holds the big canvas
+  const spacer = document.createElement('div');
+  spacer.className = 'focus-spacer';
+  const content = document.createElement('div');
+  content.className = 'focus-content';
+  spacer.appendChild(content);
+
+  // show canvas.png if it exists
+  (()=>{
+    const img = new Image();
+    img.onload = ()=> content.classList.add('has-img');
+    img.onerror = ()=> {
+      const ph = document.createElement('div');
+      ph.className = 'focus-placeholder';
+      ph.textContent = 'GRID OF FACES & FOOD CARTS WITH QUOTES';
+      content.appendChild(ph);
+    };
+    img.src = 'canvas.png';
+  })();
+
+  // template: thin everywhere, clicked barely wider, plus BIG canvas slot after it
+  function templateWithSpacer(afterIndex){
+    const cs = getComputedStyle(document.documentElement);
+    const thin   = cs.getPropertyValue('--thin').trim();
+    const active = cs.getPropertyValue('--active').trim();
+    const gapW   = `var(--focus-gap)`;
+    const parts  = [];
+    for (let k = 0; k < SLIVERS; k++) {
+      parts.push(k === afterIndex ? active : thin);
+      if (k === afterIndex) parts.push(gapW);
+    }
+    return parts.join(' ');
+  }
+
+  function activate(i){
+    // move/add spacer just after clicked sliver
+    if (spacer.isConnected) spacer.remove();
+    slivers[i].insertAdjacentElement('afterend', spacer);
+
+    // visuals
+    slivers.forEach((el, idx)=> el.classList.toggle('is-active', idx===i));
+
+    // apply grid
+    grid.style.gridTemplateColumns = templateWithSpacer(i);
+  }
+
+  // reset by pressing Esc or clicking background
+  function reset(){
+    if (spacer.isConnected) spacer.remove();
+    grid.style.gridTemplateColumns = `repeat(${SLIVERS}, var(--rest))`;
+    slivers.forEach(el=> el.classList.remove('is-active'));
+  }
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') reset(); });
+  document.body.addEventListener('click', e=>{
+    if (!e.target.classList.contains('sliver') && spacer.isConnected) reset();
+  });
+</script>
+</body>
+</html>

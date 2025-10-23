@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>draft3</title>
+<style>
+  :root{
+    --slivers: 20;
+    --height: 100vh;
+    --thin: .55fr;
+    --active: .95fr;
+    --rest: 1fr;
+    --focus-gap: min(72vw, 1200px);
+    --t: 480ms;
+    --e: cubic-bezier(.2,.75,.2,1);
+
+    /* Cursor */
+    --cursor-size: 64px;
+
+    /* Popup */
+    --bubble-bg: rgba(255,255,255,.92);
+    --bubble-border: rgba(17,17,17,.85);
+    --bubble-shadow: 0 14px 40px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{
+    height:100%;
+    overflow:hidden;
+    background:#000;
+    color:#fff;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    cursor:none; /* custom cursor */
+  }
+
+  .stage{height:var(--height);display:flex;align-items:stretch}
+  .slices{
+    width:100vw;height:100%;
+    display:grid; grid-template-columns:repeat(var(--slivers), var(--rest));
+    transition:grid-template-columns var(--t) var(--e);
+    will-change:grid-template-columns;
+  }
+
+  /* Landing: each sliver is a slice of image.png (now posterized + saturated) */
+  .sliver{
+    background-image:url("image.png");
+    background-repeat:no-repeat;
+    background-size:calc(var(--slivers)*100%) 100%;
+    background-position:center;
+
+    /* bitmap-y presentation */
+    image-rendering: pixelated;
+    filter: url(#bitmapify);                    /* ← posterize + saturate */
+
+    cursor:none;
+    transition:filter var(--t) var(--e), transform 360ms ease;
+  }
+  .sliver:hover{
+    /* keep bitmap effect while giving a subtle pop */
+    filter: url(#bitmapify) brightness(1.06) contrast(1.06);
+    transform:scale(1.01);
+  }
+  .sliver.is-active{
+    z-index:2;
+    filter: url(#bitmapify) brightness(1.08) contrast(1.08);
+  }
+
+  /* Focus panel (shows clicked image with the same bitmap filter + tint) */
+  .focus-spacer{ position:relative; background:transparent; pointer-events:auto; overflow:hidden; }
+  .focus-content{
+    position:absolute; inset:0;
+    background:#000;
+    background-position:center;
+    background-size:cover;
+    background-repeat:no-repeat;
+
+    image-rendering: pixelated;
+    filter: url(#bitmapify);                    /* ← posterize + saturate */
+  }
+  .focus-content::after{
+    content:"";
+    position:absolute; inset:0;
+    background: linear-gradient(0deg, var(--focus-tint, transparent), var(--focus-tint, transparent));
+    mix-blend-mode:multiply;
+    opacity:.35;          /* TINT STRENGTH — tweak if needed */
+    pointer-events:none;
+  }
+
+  /* One-at-a-time popup (restyled) */
+  .bubble{
+    position:absolute; z-index:3;
+    max-width:min(420px, 72%);
+    padding:16px 18px;
+    background:var(--bubble-bg);
+    color:#111;
+    border:1px solid var(--bubble-border);
+    border-radius:20px;
+    box-shadow:var(--bubble-shadow);
+    backdrop-filter:saturate(120%) blur(4px);
+    font-size:15px; line-height:1.35;
+    letter-spacing:.1px;
+    opacity:0; transform:translateY(8px) scale(.98);
+    animation:bubble-in .35s var(--e) forwards;
+  }
+  .bubble .meta{
+    margin:0 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.18em; opacity:.7;
+  }
+  .bubble .title{ font-weight:800; margin-bottom:6px; font-size:16px; }
+  @keyframes bubble-in { to { opacity:1; transform:translateY(0) scale(1); } }
+
+  /* Custom cursor (difference blend) */
+  .cursor{
+    position:fixed;
+    width:var(--cursor-size);
+    height:var(--cursor-size);
+    margin-left:calc(var(--cursor-size) * -0.5);
+    margin-top:calc(var(--cursor-size) * -0.5);
+    left:0; top:0;
+    background:url("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQf2pHfZpXPHeFBfFgeaZj_UEz2St37G1eEOQ&s") no-repeat center/contain;
+    mix-blend-mode:difference;
+    pointer-events:none;
+    z-index:9999;
+    will-change: transform;
+  }
+
+  @media (max-width:700px){
+    :root{ --thin:.65fr; --active:.9fr; --focus-gap:min(85vw, 900px); --cursor-size:44px; }
+  }
+</style>
+</head>
+<body>
+<!-- SVG filter shared by both the slivers (image.png) and the focus image -->
+<svg width="0" height="0" style="position:absolute;visibility:hidden" aria-hidden="true" focusable="false">
+  <filter id="bitmapify" color-interpolation-filters="sRGB">
+    <!-- ↑ Increase/decrease the saturation here. Current = 1.5 -->
+    <feColorMatrix type="saturate" values="1.5" />
+    <!-- Posterize to ~12 levels per channel. Fewer stops = chunkier look. -->
+    <feComponentTransfer>
+      <feFuncR type="discrete" tableValues="0 0.09 0.18 0.27 0.36 0.45 0.55 0.64 0.73 0.82 0.91 1"/>
+      <feFuncG type="discrete" tableValues="0 0.09 0.18 0.27 0.36 0.45 0.55 0.64 0.73 0.82 0.91 1"/>
+      <feFuncB type="discrete" tableValues="0 0.09 0.18 0.27 0.36 0.45 0.55 0.64 0.73 0.82 0.91 1"/>
+      <feFuncA type="table"    tableValues="0 1"/>
+    </feComponentTransfer>
+  </filter>
+</svg>
+
+<div class="stage">
+  <div class="slices" id="slices"></div>
+</div>
+
+<!-- custom cursor -->
+<div class="cursor" id="cursor"></div>
+
+<script>
+  const SLIVERS = 20;
+  const grid = document.getElementById('slices');
+
+  /* Time-of-day bands (left → right) */
+  const bands = [
+    { name:'Night',   start:0,  end:4 },
+    { name:'Sunrise', start:5,  end:8 },
+    { name:'Day',     start:9,  end:14 },
+    { name:'Sunset',  start:15, end:19 },
+  ];
+  function bandForIndex(i){ return bands.find(b => i>=b.start && i<=b.end) || bands[0]; }
+
+  /* Palette sampled from your reference image (left→right) */
+  const palette = [
+    '#1d2948','#1d2440','#202946','#2d3d64','#456194',
+    '#526da4','#54669a','#716696','#905470','#99484c',
+    '#ae4e41','#9f4a47','#915b78','#6c81b1','#7b7994',
+    '#a88771','#a38166','#a58878','#ad8b70','#a28468'
+  ];
+
+  /* Hour labels */
+  function hourLabelFromIndex(i){
+    const h = i % 24; const next = (h + 1) % 24;
+    return `${formatHour(h)}–${formatHour(next)}`;
+  }
+  function formatHour(h){ const isPM = h >= 12; const base = h % 12 === 0 ? 12 : (h % 12); return `${base} ${isPM ? 'PM' : 'AM'}`; }
+
+  /* Stories */
+  const cartNames = [
+    'Midnight Halal','After Hours Noodles','Night Kati','Owl Taco','Churro Comet',
+    'Bagel Planet','Sunrise Chaat','Tamalito Express','Morning Momo','Early Kebab',
+    'Falafel & Co.','Taco Rápido','Momo Lane','Pupusa Corner','Bao Stop',
+    'Kebab Cartel','Dumpling Dot','Arepa Mile','Sushi Sidewalk','Kathi Corner'
+  ];
+  const specialties = [
+    'chicken over rice, white sauce','wok noodles with chili crisp','egg kati with green chutney',
+    'al pastor with pineapple','warm churros, cinnamon sugar','sesame bagels & hot coffee',
+    'masala chai & bun maska','corn tamales & café de olla','steamed momos, spicy chutney',
+    'charcoal kebabs & saffron rice','herby falafel with pickles','birria tacos & consommé',
+    'chicken momos, tomato achar','bean & cheese pupusas','fluffy bao, black vinegar',
+    'lamb kebabs, sumac onions','crispy dumplings, soy & garlic','griddled arepas, queso',
+    'street sushi rolls','paneer kathi rolls'
+  ];
+  const linePoolA = [
+    "Foil crackles louder than traffic.","Steam smells like home.","We trade names and spice levels.",
+    "Pickles, herbs, a squeeze of lemon.","White sauce first, then heat.","Stories travel faster than the smoke.",
+    "First pour wakes the block.","Sizzle meets the subway rumble.","Five minutes — I’ll call your name.",
+    "Golden hour paints the foil."
+  ];
+  const linePoolB = [
+    "Cash crinkles; grill whispers.","You’ll make it — take this for the walk.","Add sauce? Trust me.",
+    "Share a skewer, save a story.","Regulars recognized by footsteps.","Next time, bring a friend.",
+    "We’re here till the lights blink.","Two minutes, almost ready.","Card or cash, love?","Take a seat on the curb."
+  ];
+  const stories = Array.from({length: SLIVERS}, (_, i) => {
+    const hour = hourLabelFromIndex(i);
+    const title = `${cartNames[i]} — ${hour}`;
+    const lines = [
+      `Hour ${hour}: special is ${specialties[i]}.`,
+      linePoolA[i % linePoolA.length],
+      linePoolB[(i * 3) % linePoolB.length]
+    ];
+    return { title, lines, nextLineIdx: 0 };
+  });
+
+  /* Build landing slivers (sprite positions) */
+  const slivers = [];
+  for (let i = 0; i < SLIVERS; i++) {
+    const d = document.createElement('div');
+    d.className = 'sliver';
+    d.dataset.i = i;
+    d.style.backgroundPosition = `${(i/(SLIVERS-1))*100}% 50%`;
+    d.addEventListener('click', (e)=>activate(i, e));
+    grid.appendChild(d);
+    slivers.push(d);
+  }
+
+  /* Focus area (shows clicked image + palette tint) */
+  const spacer = document.createElement('div');
+  spacer.className = 'focus-spacer';
+  const content = document.createElement('div');
+  content.className = 'focus-content';
+  spacer.appendChild(content);
+
+  function templateWithSpacer(afterIndex){
+    const cs = getComputedStyle(document.documentElement);
+    const thin   = cs.getPropertyValue('--thin').trim();
+    const active = cs.getPropertyValue('--active').trim();
+    const parts  = [];
+    for (let k=0;k<SLIVERS;k++){
+      parts.push(k===afterIndex ? active : thin);
+      if (k===afterIndex) parts.push(`var(--focus-gap)`);
+    }
+    return parts.join(' ');
+  }
+
+  let currentIndex = -1;
+  let activeBubble = null; // enforce single popup
+
+  function activate(i, evt){
+    // Insert focus panel next to clicked sliver
+    if (spacer.isConnected) spacer.remove();
+    slivers[i].insertAdjacentElement('afterend', spacer);
+    slivers.forEach((el, idx)=> el.classList.toggle('is-active', idx===i));
+    grid.style.gridTemplateColumns = templateWithSpacer(i);
+
+    // Show the per-sliver image with palette-based tint
+    const imgIdx = i + 1; // image1.png ... image20.png
+    content.style.backgroundImage = `url("image${imgIdx}.png")`;
+    content.style.setProperty('--focus-tint', palette[i] || '#000');
+
+    // replace any existing bubble (no overlaps)
+    if (activeBubble) { activeBubble.remove(); activeBubble = null; }
+
+    currentIndex = i;
+    spawnClickBubble(evt);
+  }
+
+  function reset(){
+    if (spacer.isConnected) spacer.remove();
+    grid.style.gridTemplateColumns = `repeat(${SLIVERS}, var(--rest))`;
+    slivers.forEach(el=> el.classList.remove('is-active'));
+    if (activeBubble) { activeBubble.remove(); activeBubble = null; }
+    currentIndex = -1;
+  }
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') reset(); });
+  document.body.addEventListener('click', e=>{
+    if (!e.target.classList.contains('sliver') &&
+        !e.target.classList.contains('bubble') &&
+        spacer.isConnected) reset();
+  });
+
+  /* Single popup helpers */
+  function createBubble({x,y,bandName,title,lines}){
+    if (activeBubble) { activeBubble.remove(); activeBubble = null; }
+
+    const b = document.createElement('div');
+    b.className = `bubble`;
+    b.innerHTML = `
+      <div class="meta">${escapeHtml(bandName)}</div>
+      <div class="title">${escapeHtml(title)}</div>
+      <div class="body">${lines.map(s=>escapeHtml(s)).join('<br>')}</div>
+    `;
+    content.appendChild(b);
+
+    const pad = 18;
+    const bw=b.offsetWidth, bh=b.offsetHeight;
+    const maxX = content.clientWidth - bw - pad;
+    const maxY = content.clientHeight - bh - pad;
+    const px = Math.max(pad, Math.min((x ?? 40) - bw/2, maxX));
+    const py = Math.max(pad, Math.min((y ?? 40) - bh/2, maxY));
+    b.style.left = px+'px';
+    b.style.top  = py+'px';
+
+    activeBubble = b;
+    return b;
+  }
+  const escapeHtml = s => s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  function nextLinesForSliver(i, count=1){
+    const s = stories[i]; const out = [];
+    for (let k=0;k<count;k++){ out.push(s.lines[s.nextLineIdx % s.lines.length]); s.nextLineIdx++; }
+    return out;
+  }
+  function spawnClickBubble(evt){
+    if (currentIndex<0) return;
+    const rect = content.getBoundingClientRect();
+    const cx = Math.max(0, Math.min(evt.clientX - rect.left, rect.width));
+    const cy = Math.max(0, Math.min(evt.clientY - rect.top, rect.height));
+    const band = bandForIndex(currentIndex);
+    const s = stories[currentIndex];
+
+    createBubble({
+      x: cx, y: cy,
+      bandName: band.name,
+      title: s.title,
+      lines: nextLinesForSliver(currentIndex, 2)
+    });
+  }
+
+  /* Custom cursor follower */
+  const cursorEl = document.getElementById('cursor');
+  window.addEventListener('mousemove', (e)=>{
+    cursorEl.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+  }, {passive:true});
+</script>
+</body>
+</html>

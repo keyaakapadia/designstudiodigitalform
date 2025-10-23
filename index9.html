@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Foil & Fire</title>
+<style>
+  :root{
+    --slivers: 20;
+    --height: 100vh;
+    --thin: .55fr;
+    --active: .95fr;
+    --rest: 1fr;
+    --focus-gap: min(72vw, 1200px);
+    --t: 480ms;
+    --e: cubic-bezier(.2,.75,.2,1);
+
+    --cursor-size: 64px;
+
+    /* Popup (glass) */
+    --bubble-bg: rgba(255,255,255,.14);
+    --bubble-stroke: rgba(255,255,255,.55);
+    --bubble-shadow: 0 22px 70px rgba(0,0,0,.5);
+    --bubble-blur: 14px;
+
+    /* Halftone */
+    --dot-size: 6px;
+    --dot-gap: 10px;
+    --ht-blur: 1px;
+    --ht-opacity: .25;
+    --ht-focus-opacity: .3;
+
+    /* Tint strength */
+    --tint-opacity: .36;
+
+    /* Contrast & brightness */
+    --sprite-contrast: 1.25;
+    --focus-contrast: 1.10;
+
+    /* About Bar */
+    --about-bg: rgba(18,18,18,.45);
+    --about-stroke: rgba(255,255,255,.28);
+    --about-shadow: 0 30px 90px rgba(0,0,0,.55);
+    --about-blur: 16px;
+    --about-accent: #ffd86b;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{
+    height:100%;
+    overflow:hidden;
+    background:#000;
+    color:#fff;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    cursor:none;
+  }
+
+  .stage{height:var(--height);display:flex;align-items:stretch}
+  .slices{
+    width:100vw;height:100%;
+    display:grid; grid-template-columns:repeat(var(--slivers), var(--rest));
+    transition:grid-template-columns var(--t) var(--e);
+    will-change:grid-template-columns;
+  }
+
+  /* LANDING (image.png) */
+  .sliver{
+    position:relative;
+    background-image:url("image.png");
+    background-repeat:no-repeat;
+    background-size:calc(var(--slivers)*100%) 100%;
+    background-position:center;
+    image-rendering:pixelated;
+    filter:url(#bitmapify) contrast(var(--sprite-contrast)) brightness(1.02);
+    transition:filter var(--t) var(--e), transform 360ms ease;
+  }
+  .sliver::after{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:
+      linear-gradient(0deg, var(--slice-tint, transparent), var(--slice-tint, transparent)),
+      radial-gradient(100% 80% at 50% 40%, rgba(255,255,255,.14), transparent 60%);
+    mix-blend-mode: overlay;
+    opacity: var(--tint-opacity);
+  }
+  .sliver::before{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:
+      radial-gradient(circle at center,
+        var(--slice-ht, #ffffff) 0 calc(var(--dot-size)/2),
+        transparent calc(var(--dot-size)/2 + 0.1px) 100%);
+    background-size: var(--dot-gap) var(--dot-gap);
+    mix-blend-mode: soft-light;
+    opacity: var(--ht-opacity);
+    filter: blur(var(--ht-blur));
+  }
+  .sliver:hover{ transform:scale(1.01); filter:url(#bitmapify) contrast(1.32) brightness(1.04); }
+  .sliver.is-active{ z-index:2; filter:url(#bitmapify) contrast(1.35) brightness(1.05); }
+
+  /* FOCUS (image1.png … image20.png) */
+  .focus-spacer{ position:relative; pointer-events:auto; overflow:hidden; }
+  .focus-content{
+    position:absolute; inset:0;
+    background:#000 no-repeat center/cover;
+    image-rendering:pixelated;
+    filter:url(#bitmapify) contrast(var(--focus-contrast)) brightness(1.02);
+  }
+  .focus-content::after{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:
+      linear-gradient(0deg, var(--focus-tint, transparent), var(--focus-tint, transparent)),
+      radial-gradient(100% 70% at 45% 30%, rgba(255,255,255,.12), transparent 60%);
+    mix-blend-mode: overlay;
+    opacity: var(--tint-opacity);
+  }
+  .focus-content::before{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:
+      radial-gradient(circle at center,
+        var(--focus-ht, #ffffff) 0 calc(var(--dot-size)/2),
+        transparent calc(var(--dot-size)/2 + 0.1px) 100%);
+    background-size: var(--dot-gap) var(--dot-gap);
+    mix-blend-mode: soft-light;
+    opacity: var(--ht-focus-opacity);
+    filter: blur(var(--ht-blur));
+  }
+
+  /* GLASS POPUPS */
+  .bubble{
+    position:absolute; z-index:3;
+    max-width:min(480px, 78%);
+    padding:18px 20px; color:#fff;
+    background: var(--bubble-bg);
+    border: 1px solid var(--bubble-stroke);
+    box-shadow: var(--bubble-shadow);
+    backdrop-filter: blur(var(--bubble-blur)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--bubble-blur)) saturate(160%);
+    border-radius: 18px;
+    outline: 1px solid rgba(255,255,255,.18); outline-offset:-4px;
+    font-size:15px; line-height:1.45;
+    opacity:0; transform:translateY(10px) scale(.98);
+    animation:bubble-in .35s var(--e) forwards;
+  }
+  .bubble .meta{ margin:0 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.22em; opacity:.85;}
+  .bubble .title{ font-weight:800; margin-bottom:6px; font-size:16px;}
+  .bubble .body{ opacity:.95; }
+  @keyframes bubble-in { to { opacity:1; transform:translateY(0) scale(1); } }
+
+  /* CURSOR */
+  .cursor{
+    position:fixed;width:var(--cursor-size);height:var(--cursor-size);
+    margin-left:calc(var(--cursor-size)*-0.5);margin-top:calc(var(--cursor-size)*-0.5);
+    left:0;top:0;
+    background:url("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQf2pHfZpXPHeFBfFgeaZj_UEz2St37G1eEOQ&s") no-repeat center/contain;
+    mix-blend-mode:difference;pointer-events:none;z-index:9999;will-change:transform;
+  }
+
+  /* ABOUT BAR (glass) */
+  .about-bar{
+    position:fixed; left:0; right:0; top:0;
+    transform: translateY(-110%);
+    opacity: 0;
+    transition: transform .4s var(--e), opacity .3s ease;
+    z-index: 9998;
+
+    background: var(--about-bg);
+    border-bottom: 1px solid var(--about-stroke);
+    box-shadow: var(--about-shadow);
+    backdrop-filter: blur(var(--about-blur)) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--about-blur)) saturate(140%);
+  }
+  .about-bar.is-visible{ transform: translateY(0); opacity: 1; }
+  .about-inner{ display:flex; align-items:center; gap:16px; padding:14px clamp(16px,4vw,28px); }
+  .about-title{ font-weight:800; font-size:18px; letter-spacing:.02em;}
+  .about-dot{ color: var(--about-accent); margin: 0 8px; }
+  .about-copy{ font-size:14px; opacity:.92; line-height:1.35; }
+  .about-close{
+    margin-left:auto; border:none; color:#fff;
+    background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.35);
+    padding:8px 12px; border-radius:12px; cursor:pointer;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .about-close:hover{ background:rgba(255,255,255,.22); }
+
+  @media (max-width:700px){
+    :root{ --cursor-size:44px; --dot-size:5px; --dot-gap:9px; --ht-blur:.8px; }
+    .about-title{ font-size:16px; }
+    .about-copy{ font-size:13px; }
+  }
+</style>
+</head>
+<body>
+<!-- Posterize filter (keeps color) -->
+<svg width="0" height="0" style="position:absolute;visibility:hidden">
+  <filter id="bitmapify" color-interpolation-filters="sRGB">
+    <feColorMatrix type="saturate" values="1"/>
+    <feComponentTransfer>
+      <feFuncR type="discrete" tableValues="0 .11 .22 .33 .44 .55 .66 .77 .88 1"/>
+      <feFuncG type="discrete" tableValues="0 .11 .22 .33 .44 .55 .66 .77 .88 1"/>
+      <feFuncB type="discrete" tableValues="0 .11 .22 .33 .44 .55 .66 .77 .88 1"/>
+    </feComponentTransfer>
+  </filter>
+</svg>
+
+<!-- ABOUT BAR -->
+<div class="about-bar" id="aboutBar">
+  <div class="about-inner">
+    <div class="about-title">Foil &amp; Fire</div>
+    <div class="about-dot">•</div>
+    <div class="about-copy">
+      A living poster that shows how street-food carts are there at every hour—night to sunrise to day to sunset—left or right, here or there.
+      The 20 slivers form a timeline of light; each slice holds a story so you feel the carts are always present, working, feeding, glowing.
+    </div>
+    <button class="about-close" id="aboutClose" title="Close">✕</button>
+  </div>
+</div>
+
+<div class="stage"><div class="slices" id="slices"></div></div>
+<div class="cursor" id="cursor"></div>
+
+<script>
+/* ---------- Basic helpers ---------- */
+const SLIVERS=20;
+const grid=document.getElementById('slices');
+const palette=[
+  '#1d2948','#1d2440','#202946','#2d3d64','#456194',
+  '#526da4','#54669a','#716696','#905470','#99484c',
+  '#ae4e41','#9f4a47','#915b78','#6c81b1','#7b7994',
+  '#a88771','#a38166','#a58878','#ad8b70','#a28468'
+];
+const bands=[{name:'Night',start:0,end:4},{name:'Sunrise',start:5,end:8},{name:'Day',start:9,end:14},{name:'Sunset',start:15,end:19}];
+const bandForIndex=i=>bands.find(b=>i>=b.start&&i<=b.end)||bands[0];
+const hourLabelFromIndex=i=>{const h=i%24,n=(h+1)%24;const fmt=x=>`${(x%12||12)} ${x>=12?'PM':'AM'}`;return `${fmt(h)}–${fmt(n)}`};
+const escapeHtml=s=>s.replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+/* ---------- TEXT CONTENT (20 images) ---------- */
+const cartMakes = [
+  "LED ‘RICE’ sign blazing over a chrome halal cart; vendor in a teal shirt counts change.",
+  "Red-orange awning cart at Union Square; the vendor flashes a thumbs-up behind the glass.",
+  "Nathan’s green-topped cart with brick-print wrap facing midtown foot traffic.",
+  "Chrome halal cart with a long LED marquee and rows of lit menu circles.",
+  "Wide chrome cart with bright white light bars and rainbow bottles stacked in front.",
+  "Snack-forward cart: pretzels piled high, neon drinks lined like a chorus.",
+  "Menu boards everywhere—corn dogs, gyros, fries—under a lively red sign strip.",
+  "Blue-and-yellow Sabrett umbrella trio over a spotless white-panel cart in the park.",
+  "LED heart beats above glass; bottles glow like little traffic lights.",
+  "Classic late-night cart, mirror-bright steel catching the city’s reflections.",
+  "Close-up counter: ‘DISPLAY ONLY’ sign, bottles in tight rows, street reflections in steel.",
+  "Saffron-yellow cart labeled REDA’S, twin Sabrett umbrellas and after-work sidewalk rush.",
+  "Tall-backdrop plaza cart—tri-umbrella Sabrett canopy; vendor in a pink cap.",
+  "Boxy chrome cart under office windows, menu grid lit like a tiny billboard.",
+  "Blue-and-yellow umbrellas again, white panels bright against the plaza dusk.",
+  "Evening line: two customers lean in as a calm vendor works beneath red-gold umbrellas.",
+  "Black ‘Chicken Spot’ cart, heavy photo menus and a wall of golden fries.",
+  "Red Noor’s Kitchen cart strung with bulbs; pretzels tower by the register.",
+  "ADHAM & SEIF cart with rainbow LED band; circles of menu photos rim the roofline.",
+  "Silver cart at a souvenir strip; patchwork umbrellas, steam fogging the window."
+];
+
+const specials = [
+  "chicken over rice, extra white sauce",
+  "lamb gyro with hot sauce and a thumbs-up",
+  "NY cheese steak and crinkle fries",
+  "combo platter with green, white, red sauces",
+  "falafel over rice & chilled sodas",
+  "pretzels, dogs, and rainbow drinks",
+  "cheeseburger, chili dog, and fries",
+  "hot dogs, chicken tenders, and soda",
+  "corn dogs and lamb gyro on pita",
+  "late-night halal plate with salad",
+  "mix gyro, falafel, and churros",
+  "hot dog with onions & mozzarella sticks",
+  "fresh lemonade and lamb over rice",
+  "chicken gyro and fries, extra pickles",
+  "philly steak and nuggets platter",
+  "spicy chicken over rice, red line",
+  "chicken wings, chili cheese fries",
+  "crispy tenders and pretzel stack",
+  "Italian sausage, corn dog, and soda",
+  "best hot dog & cheese fries"
+];
+
+/* Base human moments (1 per image) */
+const baseNarr = [
+  "He checks the order slip under the red glow, murmuring thanks as the line shifts forward.",
+  "He grins through steam and LEDs, thumb up for the camera while a kid points at the pictures.",
+  "She counts bills with one hand and steadies a soda with the other as office badges drift past.",
+  "A teen reads the marquee, then whispers his spice level like a secret to the cook.",
+  "The man in teal scribbles totals, then slides the foil boat out like a gift.",
+  "A pretzel gets salted; a dad negotiates ketchup for two small hands already reaching.",
+  "Friends argue over onions; the vendor laughs and splits the napkins between them.",
+  "A runner breathes hard, taps a card, and nods at the cook who’s already flipping the bun.",
+  "A couple shares a bottle, their reflection blinking with the LED heart.",
+  "The last order of the block goes out with a nod; the street inhales and keeps moving.",
+  "He lines the bottles by label, wipes the glass, and tells a passerby the churros are worth the wait.",
+  "A yellow clock up the avenue says almost dinner; he calls ‘boss’ kindly to everyone in line.",
+  "The vendor in a pink cap leans down to hear an older man ask for ‘just a little hot.’",
+  "She studies the grid of photos, then asks, ‘What do you eat when you’re tired?’ and smiles at the answer.",
+  "A cyclist rolls up, one earbud in; the cook waves and starts the dog before the words arrive.",
+  "Two strangers trade small talk about trains while the vendor seals a foil packet with a soft press.",
+  "Teenagers count change on a skateboard; the cook taps the glass and says, ‘Take the fries first—hot now.’",
+  "He stacks pretzels like bracelets and tells a girl that his mother taught him the fold of the dough.",
+  "A woman points at the LED, laughs, and the vendor jokes, ‘If it blinks, it’s fresh.’",
+  "He flips a bun and glances at the souvenir shop lights; a kid asks if pretzels are ‘NY-shaped.’"
+];
+
+/* Band-flavor alternates (for rotation) */
+const bandAlts = {
+  Night: [
+    "Neon trims the steel; orders arrive like quiet waves.",
+    "Steam threads the dark and the city nods back.",
+    "He counts cash by feel; headlights give him a halo."
+  ],
+  Sunrise: [
+    "Chai fog kisses the glass; first commuters trade coins for warmth.",
+    "The umbrellas wake; someone asks for extra bread for the walk.",
+    "A thermos clicks and the street remembers breakfast."
+  ],
+  Day: [
+    "Receipts clap, lids lift, and laughter covers the sizzle.",
+    "Lines braid around the cart; spice levels spoken like code.",
+    "Hands juggle bottles, bills, and stories in equal measure."
+  ],
+  Sunset: [
+    "Golden light slicks the grill; smoke tastes sweet and new.",
+    "Friends trade bites as the city loosens its tie.",
+    "He wipes the counter slowly, ready for the night shift."
+  ]
+};
+
+/* Build rotating pools per sliver */
+const narrationPools = Array.from({length: SLIVERS}, (_, i) => {
+  const band = bandForIndex(i).name;
+  const alts = bandAlts[band];
+  // rotate base + two band-flavored alternates
+  return [ baseNarr[i], alts[i % alts.length], alts[(i+1) % alts.length] ];
+});
+const narrIndex = Array(SLIVERS).fill(0);
+function nextNarration(i){
+  const pool = narrationPools[i];
+  const idx = narrIndex[i]++ % pool.length;
+  return pool[idx];
+}
+
+/* ---------- Build slivers ---------- */
+const slivers=[];
+for(let i=0;i<SLIVERS;i++){
+  const d=document.createElement('div');
+  d.className='sliver';
+  d.dataset.i=i;
+  d.style.backgroundPosition=`${(i/(SLIVERS-1))*100}% 50%`;
+  d.style.setProperty('--slice-tint',palette[i]);
+  d.style.setProperty('--slice-ht',palette[i]);
+  d.addEventListener('click',e=>activate(i,e));
+  grid.appendChild(d); slivers.push(d);
+}
+
+/* ---------- Focus area ---------- */
+const spacer=document.createElement('div');spacer.className='focus-spacer';
+const content=document.createElement('div');content.className='focus-content';spacer.appendChild(content);
+
+function templateWithSpacer(afterIndex){
+  const cs=getComputedStyle(document.documentElement);
+  const thin=cs.getPropertyValue('--thin').trim();
+  const active=cs.getPropertyValue('--active').trim();
+  const parts=[];
+  for(let k=0;k<SLIVERS;k++){ parts.push(k===afterIndex?active:thin); if(k===afterIndex) parts.push('var(--focus-gap)'); }
+  return parts.join(' ');
+}
+
+let currentIndex=-1;
+const activeRects=[];
+
+function clearAllBubbles(){ document.querySelectorAll('.bubble').forEach(b=>b.remove()); activeRects.length=0; }
+
+function activate(i,evt){
+  if(spacer.isConnected) spacer.remove();
+  slivers[i].insertAdjacentElement('afterend',spacer);
+  grid.style.gridTemplateColumns=templateWithSpacer(i);
+
+  const imgIdx=i+1;
+  content.style.backgroundImage=`url("image${imgIdx}.png")`;
+  content.style.setProperty('--focus-tint',palette[i]);
+  content.style.setProperty('--focus-ht',palette[i]);
+
+  clearAllBubbles();
+  currentIndex=i;
+  spawnClickBubble(evt);
+  burstForCurrent();
+}
+
+function reset(){
+  if(spacer.isConnected) spacer.remove();
+  grid.style.gridTemplateColumns=`repeat(${SLIVERS}, var(--rest))`;
+  clearAllBubbles(); currentIndex=-1;
+}
+addEventListener('keydown',e=>{ if(e.key==='Escape'){ reset(); hideAbout(); }});
+
+/* ---------- Non-overlapping bubbles ---------- */
+function overlaps(a,b,margin=10){
+  return !(a.x+a.w+margin<b.x || b.x+b.w+margin<a.x || a.y+a.h+margin<b.y || b.y+b.h+margin<a.y);
+}
+function findFreeSlot(x,y0,w,h){
+  const pad=18, maxX=content.clientWidth-w-pad, maxY=content.clientHeight-h-pad;
+  let xFixed=Math.max(pad,Math.min(x,maxX));
+  const step=Math.max(14,Math.floor(h*0.6));
+  const yStart=Math.max(pad,Math.min(y0,maxY));
+  const candidates=[yStart];
+  for(let k=1;k<100;k++){
+    const yUp=yStart-k*step, yDn=yStart+k*step;
+    if(yUp>=pad) candidates.push(yUp);
+    if(yDn<=maxY) candidates.push(yDn);
+    if(yUp<pad && yDn>maxY) break;
+  }
+  for(const y of candidates){
+    const c={x:xFixed,y,w,h};
+    if(!activeRects.some(r=>overlaps(c,r))) return {x:xFixed,y};
+  }
+  return {x:xFixed, y:maxY};
+}
+
+function createBubble({x,y,bandName,hour,make,narration}){
+  const b=document.createElement('div');
+  b.className='bubble';
+  b.innerHTML=`
+    <div class="meta">${escapeHtml(bandName)} • ${escapeHtml(hour)}</div>
+    <div class="title">${escapeHtml(make)}</div>
+    <div class="body">${escapeHtml(narration)}</div>
+  `;
+  content.appendChild(b);
+  const bw=b.offsetWidth, bh=b.offsetHeight;
+  const slot=findFreeSlot(x??40,y??40,bw,bh);
+  b.style.left=`${slot.x}px`; b.style.top=`${slot.y}px`;
+  activeRects.push({x:slot.x,y:slot.y,w:bw,h:bh,el:b});
+  const fadeMs=5200+Math.random()*1400, killMs=fadeMs+950;
+  setTimeout(()=>b.style.opacity=0,fadeMs);
+  setTimeout(()=>{
+    const idx=activeRects.findIndex(r=>r.el===b);
+    if(idx>-1) activeRects.splice(idx,1);
+    b.remove();
+  },killMs);
+}
+
+function spawnClickBubble(evt){
+  if(currentIndex<0) return;
+  const rect=content.getBoundingClientRect();
+  const cx=Math.max(0,Math.min(evt.clientX-rect.left,rect.width));
+  const cy=Math.max(0,Math.min(evt.clientY-rect.top,rect.height));
+  const band=bandForIndex(currentIndex).name;
+  createBubble({
+    x:cx, y:cy,
+    bandName:band,
+    hour:hourLabelFromIndex(currentIndex),
+    make:`${cartMakes[currentIndex]} — ${specials[currentIndex]}`,
+    narration: nextNarration(currentIndex)        // <-- ROTATES
+  });
+}
+
+function burstForCurrent(){
+  if(currentIndex<0) return;
+  const band=bandForIndex(currentIndex).name;
+  const count=3+Math.floor(Math.random()*3);
+  for(let k=0;k<count;k++){
+    setTimeout(()=>{
+      const x=40+Math.random()*(content.clientWidth-80);
+      const y=40+Math.random()*(content.clientHeight-120);
+      createBubble({
+        x,y,
+        bandName:band,
+        hour:hourLabelFromIndex(currentIndex),
+        make:`${cartMakes[currentIndex]} — ${specials[currentIndex]}`,
+        narration: nextNarration(currentIndex)    // <-- ROTATES
+      });
+    },420+k*680+Math.random()*260);
+  }
+}
+
+/* ---------- Cursor + About bar ---------- */
+const cursorEl=document.getElementById('cursor');
+const aboutBar=document.getElementById('aboutBar');
+const aboutClose=document.getElementById('aboutClose');
+
+function showAbout(){ aboutBar.classList.add('is-visible'); }
+function hideAbout(){ aboutBar.classList.remove('is-visible'); }
+
+window.addEventListener('mousemove',e=>{
+  cursorEl.style.transform=`translate(${e.clientX}px,${e.clientY}px)`;
+  if(e.clientX<=14){ showAbout(); }
+  else if(aboutBar.classList.contains('is-visible') && !aboutBar.matches(':hover')){ hideAbout(); }
+},{passive:true});
+
+aboutBar.addEventListener('mouseleave', hideAbout);
+aboutClose.addEventListener('click', hideAbout);
+</script>
+</body>
+</html>

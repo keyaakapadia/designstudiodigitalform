@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Slivers + Time-Zone Bubbles (Landing bg + image1–20)</title>
+<style>
+  :root{
+    --slivers: 20;
+    --height: 100vh;
+
+    --thin: .55fr;
+    --active: .95fr;
+    --rest: 1fr;
+
+    --focus-gap: min(72vw, 1200px);
+
+    --t: 480ms;
+    --e: cubic-bezier(.2,.75,.2,1);
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    color:#fff;
+    background:#000 center/cover no-repeat fixed url("image.png"); /* landing bg */
+  }
+
+  .stage{height:var(--height);display:flex;align-items:stretch}
+  .slices{
+    width:100vw;height:100%;
+    display:grid; grid-template-columns:repeat(var(--slivers), var(--rest));
+    transition:grid-template-columns var(--t) var(--e);
+    will-change:grid-template-columns;
+  }
+
+  /* slivers each use image1.png … image20.png */
+  .sliver{
+    background-color:transparent;
+    background-size:cover;
+    background-position:center;
+    cursor:pointer;
+    transition:filter var(--t) var(--e), transform 360ms ease;
+    filter:brightness(.98) contrast(1.03);
+  }
+  .sliver.fallback{ background: linear-gradient(180deg,#1a1a1a,#0f0f0f); }
+  .sliver:hover{ filter:brightness(1.06) contrast(1.06); transform:scale(1.01); }
+  .sliver.is-active{ filter:brightness(1.08) contrast(1.08); z-index:2; }
+
+  .focus-spacer{ position:relative; background:transparent; pointer-events:auto; overflow:hidden; }
+  .focus-content{
+    position:absolute; inset:0;
+    background:#111 center/cover no-repeat;
+  }
+  .focus-content.empty{
+    display:grid; place-items:center;
+    color:#bbb; font-weight:700; letter-spacing:.02em;
+  }
+
+  /* bubbles */
+  .bubble{
+    position:absolute; z-index:2;
+    max-width:min(360px, 70%); padding:14px 16px;
+    background:#fff; color:#111;
+    border:2px solid #111; border-radius:22px;
+    filter:drop-shadow(0 8px 25px rgba(0,0,0,.45));
+    font-size:14px; line-height:1.25;
+    opacity:0; transform:translateY(8px) scale(.98);
+    animation:bubble-in .45s var(--e) forwards;
+  }
+  .bubble .title{ font-weight:800; margin-bottom:6px; font-size:15px; }
+  .bubble.left::after,
+  .bubble.right::after{
+    content:""; position:absolute; bottom:-12px;
+    width:22px; height:22px; background:#fff;
+    border-left:2px solid #111; border-bottom:2px solid #111;
+    transform:rotate(45deg);
+  }
+  .bubble.left::after{ left:22px; }
+  .bubble.right::after{ right:22px; }
+  @keyframes bubble-in { to { opacity:1; transform:translateY(0) scale(1); } }
+  .bubble.fadeout{ transition:opacity .6s ease, transform .6s ease; opacity:0; transform:translateY(-6px); }
+
+  @media (max-width:700px){
+    :root{ --thin:.65fr; --active:.9fr; --focus-gap:min(85vw, 900px); }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="slices" id="slices"></div>
+</div>
+
+<script>
+  const SLIVERS = 20;
+  const grid = document.getElementById('slices');
+
+  /* ---------- TIME BUCKETS (left ➜ right: midnight → morning → midday → sunset) ---------- */
+  // map a sliver index (0–19) to a time bucket
+  function bucketForIndex(i){
+    const r = i / (SLIVERS-1); // 0..1 left->right
+    if (r < 0.25) return 'latenight';   // midnight
+    if (r < 0.50) return 'morning';
+    if (r < 0.75) return 'midday';
+    return 'evening';                    // sunset
+  }
+
+  const cartsByTime = {
+    morning: [
+      {name:'Bagel Planet', food:'sesame bagels & hot coffee'},
+      {name:'Sunrise Chaat', food:'masala chai & bun maska'},
+      {name:'Tamalito Express', food:'corn tamales & café de olla'}
+    ],
+    midday: [
+      {name:'Falafel & Co.', food:'herby falafel with pickles'},
+      {name:'Taco Rápido', food:'al pastor with pineapple'},
+      {name:'Momo Lane', food:'steamed momos, spicy chutney'}
+    ],
+    evening: [
+      {name:'Kebab Cartel', food:'charred kebabs & saffron rice'},
+      {name:'Dumpling Dot', food:'crispy dumplings, black vinegar'},
+      {name:'Pupusa Corner', food:'bean & cheese pupusas'}
+    ],
+    latenight: [
+      {name:'Midnight Halal', food:'chicken over rice, white sauce'},
+      {name:'Noodle After Dark', food:'wok noodles, chili crisp'},
+      {name:'Churro Comet', food:'warm churros, cinnamon sugar'}
+    ]
+  };
+
+  const openers = [
+    "Been here since dawn —","Rain or clear —","Between rushes —",
+    "On slow nights —","Every Friday —","When the trains stall —","Right after the game —",
+  ];
+  const middles = [
+    "the line forms before the grill heats.",
+    "someone asks for what their dad ordered.",
+    "we trade names and spice levels.",
+    "the steam smells like home.",
+    "I recognize the regulars by footsteps.",
+    "cash crinkles with the foil.",
+    "stories travel faster than the smoke."
+  ];
+  const closers = [
+    "Stay warm, eat well.","Two minutes, almost ready.","Add sauce? Trust me.",
+    "Card or cash, love?","Take a seat on the curb.","Next time, bring a friend.",
+    "We’re here till the lights blink."
+  ];
+
+  /* ---------- BUILD SLIVERS (image1.png … image20.png) ---------- */
+  const slivers = [];
+  for (let i = 0; i < SLIVERS; i++) {
+    const d = document.createElement('div');
+    d.className = 'sliver fallback';
+    d.dataset.i = i;
+
+    const candidate = `image${i+1}.png`;
+    const img = new Image();
+    img.onload = ()=> { d.style.backgroundImage = `url("${candidate}")`; d.classList.remove('fallback'); };
+    img.src = candidate;
+
+    d.addEventListener('click', (e) => activate(i, e));
+    grid.appendChild(d);
+    slivers.push(d);
+  }
+
+  /* ---------- FOCUS AREA (starts with image.png) ---------- */
+  const spacer = document.createElement('div');
+  spacer.className = 'focus-spacer';
+  const content = document.createElement('div');
+  content.className = 'focus-content';
+  content.style.backgroundImage = 'url("image.png")'; // landing image in the panel too
+  spacer.appendChild(content);
+
+  function templateWithSpacer(afterIndex){
+    const cs = getComputedStyle(document.documentElement);
+    const thin   = cs.getPropertyValue('--thin').trim();
+    const active = cs.getPropertyValue('--active').trim();
+    const gapW   = `var(--focus-gap)`;
+    const parts  = [];
+    for (let k = 0; k < SLIVERS; k++) {
+      parts.push(k === afterIndex ? active : thin);
+      if (k === afterIndex) parts.push(gapW);
+    }
+    return parts.join(' ');
+  }
+
+  let currentBucket = 'latenight';
+
+  function activate(i, evt){
+    if (spacer.isConnected) spacer.remove();
+    slivers[i].insertAdjacentElement('afterend', spacer);
+    slivers.forEach((el, idx)=> el.classList.toggle('is-active', idx===i));
+    grid.style.gridTemplateColumns = templateWithSpacer(i);
+
+    // show the clicked sliver's image in the big panel
+    const bigSrc = `image${i+1}.png`;
+    const test = new Image();
+    test.onload = ()=>{ content.style.backgroundImage = `url("${bigSrc}")`; };
+    test.onerror = ()=>{ content.style.backgroundImage = 'url("image.png")'; };
+    test.src = bigSrc;
+
+    // set bucket by position
+    currentBucket = bucketForIndex(i);
+
+    // bubbles
+    spawnClickBubble(evt);
+    timedStoryBurst();
+  }
+
+  function reset(){
+    if (spacer.isConnected) spacer.remove();
+    grid.style.gridTemplateColumns = `repeat(${SLIVERS}, var(--rest))`;
+    slivers.forEach(el=> el.classList.remove('is-active'));
+    activeRects.length = 0;
+    currentBucket = 'latenight';
+    // restore landing image in the panel
+    content.style.backgroundImage = 'url("image.png")';
+  }
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') reset(); });
+  document.body.addEventListener('click', e=>{
+    if (!e.target.classList.contains('sliver') &&
+        !e.target.classList.contains('bubble') &&
+        spacer.isConnected) reset();
+  });
+
+  /* ---------- NON-OVERLAPPING BUBBLES ---------- */
+  const activeRects = [];
+
+  const pick = arr => arr[Math.floor(Math.random()*arr.length)];
+  function makeLines(){
+    const lines = [ `${pick(openers)} ${pick(middles)}`, pick(closers) ];
+    if (Math.random() < 0.5) lines.splice(1,0, pick(middles));
+    return lines;
+  }
+  function cartFrom(bucket){
+    const cart = pick(cartsByTime[bucket]);
+    return {bucket, ...cart};
+  }
+  function escapeHtml(s){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  function overlaps(a,b,margin=10){
+    return !(
+      a.x + a.w + margin < b.x ||
+      b.x + b.w + margin < a.x ||
+      a.y + a.h + margin < b.y ||
+      b.y + b.h + margin < a.y
+    );
+  }
+
+  function findFreeSlot(x, y0, w, h, side){
+    const pad = 18;
+    const maxX = content.clientWidth - w - pad;
+    const maxY = content.clientHeight - h - pad;
+
+    let xFixed = Math.max(pad, Math.min(x, maxX));
+    if (side === 'left')  xFixed = pad + 6;
+    if (side === 'right') xFixed = content.clientWidth - w - pad - 6;
+
+    const step = Math.max(14, Math.floor(h * 0.6));
+    const candidates = [];
+    const yStart = Math.max(pad, Math.min(y0, maxY));
+    candidates.push(yStart);
+    for (let k=1; k<80; k++){
+      const yUp  = yStart - k*step;
+      const yDn  = yStart + k*step;
+      if (yUp  >= pad) candidates.push(yUp);
+      if (yDn  <= maxY) candidates.push(yDn);
+      if (yUp < pad && yDn > maxY) break;
+    }
+    for (const y of candidates){
+      const candidate = {x:xFixed, y, w, h};
+      let ok = true;
+      for (const r of activeRects){ if (overlaps(candidate, r)) { ok=false; break; } }
+      if (ok) return {x:xFixed, y};
+    }
+    return {x:xFixed, y:maxY};
+  }
+
+  function createBubble({x, y, side, title, lines}){
+    const b = document.createElement('div');
+    b.className = `bubble ${side}`;
+    b.innerHTML = `
+      <div class="title">${title}</div>
+      <div class="body">${lines.map(l=>escapeHtml(l)).join('<br>')}</div>
+    `;
+    b.style.left = '-9999px'; b.style.top = '-9999px';
+    content.appendChild(b);
+
+    const bw = b.offsetWidth, bh = b.offsetHeight;
+    const slot = findFreeSlot(x ?? 24, y ?? 40, bw, bh, side);
+    b.style.left = slot.x + 'px';
+    b.style.top  = slot.y + 'px';
+
+    const rectRef = {x: slot.x, y: slot.y, w: bw, h: bh, el: b};
+    activeRects.push(rectRef);
+
+    const fadeMs = 4600 + Math.random()*1200;
+    const killMs = fadeMs + 800;
+    setTimeout(()=> b.classList.add('fadeout'), fadeMs);
+    setTimeout(()=>{
+      b.remove();
+      const idx = activeRects.findIndex(r=>r.el===b);
+      if (idx > -1) activeRects.splice(idx,1);
+    }, killMs);
+
+    return b;
+  }
+
+  // click bubble uses the bucket of the clicked sliver (via currentBucket)
+  function spawnClickBubble(evt){
+    if (!evt) return;
+    const rect = content.getBoundingClientRect();
+    const cx = Math.max(0, Math.min(evt.clientX - rect.left, rect.width));
+    const cy = Math.max(0, Math.min(evt.clientY - rect.top, rect.height));
+    const {bucket, name, food} = cartFrom(currentBucket);
+    createBubble({
+      x: cx, y: cy,
+      side: (cx < rect.width/2) ? 'left' : 'right',
+      title: `${name} — ${bucket}`,
+      lines: [ `Special: ${food}.`, ...makeLines() ]
+    });
+  }
+
+  // burst of bubbles on the side, also using the sliver's bucket
+  function timedStoryBurst(){
+    const count = 3 + Math.floor(Math.random()*3);
+    let sideLeft = Math.random() < 0.5;
+    for (let k=0; k<count; k++){
+      setTimeout(()=>{
+        const {bucket, name, food} = cartFrom(currentBucket);
+        const side = sideLeft ? 'left' : 'right';
+        sideLeft = !sideLeft;
+
+        const sideX = (side==='left') ? 24 : content.clientWidth - 280;
+        const ySeed = 40 + Math.random()*(content.clientHeight - 120);
+
+        createBubble({
+          x: sideX, y: ySeed, side,
+          title: `${name} — ${bucket}`,
+          lines: [ `Try: ${food}.`, ...makeLines() ]
+        });
+      }, 400 + k*900 + Math.random()*300);
+    }
+  }
+</script>
+</body>
+</html>

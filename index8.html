@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Foil & Fire</title>
+<style>
+  :root{
+    --slivers: 20;
+    --height: 100vh;
+    --thin: .55fr;
+    --active: .95fr;
+    --rest: 1fr;
+    --focus-gap: min(72vw, 1200px);
+    --t: 480ms;
+    --e: cubic-bezier(.2,.75,.2,1);
+
+    --cursor-size: 64px;
+    --bubble-bg: rgba(255,255,255,.14);
+    --bubble-stroke: rgba(255,255,255,.55);
+    --bubble-shadow: 0 22px 70px rgba(0,0,0,.5);
+    --bubble-blur: 14px;
+
+    --dot-size: 6px;
+    --dot-gap: 10px;
+    --ht-blur: 1px;
+    --ht-opacity: .25;
+    --ht-focus-opacity: .3;
+    --tint-opacity: .36;
+    --sprite-contrast: 1.25;
+    --focus-contrast: 1.10;
+
+    --about-bg: rgba(18,18,18,.45);
+    --about-stroke: rgba(255,255,255,.28);
+    --about-shadow: 0 30px 90px rgba(0,0,0,.55);
+    --about-blur: 16px;
+    --about-accent: #ffd86b;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#000;color:#fff;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;cursor:none;}
+
+  .stage{height:var(--height);display:flex;align-items:stretch}
+  .slices{width:100vw;height:100%;
+    display:grid;grid-template-columns:repeat(var(--slivers),var(--rest));
+    transition:grid-template-columns var(--t) var(--e);will-change:grid-template-columns;}
+
+  .sliver{
+    position:relative;
+    background-image:url("image.png");
+    background-repeat:no-repeat;
+    background-size:calc(var(--slivers)*100%) 100%;
+    background-position:center;
+    image-rendering:pixelated;
+    filter:url(#bitmapify) contrast(var(--sprite-contrast)) brightness(1.02);
+    transition:filter var(--t) var(--e),transform 360ms ease;
+  }
+  .sliver::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:
+      linear-gradient(0deg,var(--slice-tint,transparent),var(--slice-tint,transparent)),
+      radial-gradient(100% 80% at 50% 40%,rgba(255,255,255,.14),transparent 60%);
+    mix-blend-mode:overlay;opacity:var(--tint-opacity);
+  }
+  .sliver::before{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(circle at center,var(--slice-ht,#fff) 0 calc(var(--dot-size)/2),
+      transparent calc(var(--dot-size)/2 + .1px) 100%);
+    background-size:var(--dot-gap) var(--dot-gap);
+    mix-blend-mode:soft-light;opacity:var(--ht-opacity);filter:blur(var(--ht-blur));
+  }
+  .sliver:hover{transform:scale(1.01);filter:url(#bitmapify) contrast(1.32) brightness(1.04);}
+  .sliver.is-active{z-index:2;filter:url(#bitmapify) contrast(1.35) brightness(1.05);}
+
+  .focus-spacer{position:relative;pointer-events:auto;overflow:hidden;}
+  .focus-content{position:absolute;inset:0;background:#000 no-repeat center/cover;
+    image-rendering:pixelated;filter:url(#bitmapify) contrast(var(--focus-contrast)) brightness(1.02);}
+  .focus-content::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:
+      linear-gradient(0deg,var(--focus-tint,transparent),var(--focus-tint,transparent)),
+      radial-gradient(100% 70% at 45% 30%,rgba(255,255,255,.12),transparent 60%);
+    mix-blend-mode:overlay;opacity:var(--tint-opacity);
+  }
+  .focus-content::before{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(circle at center,var(--focus-ht,#fff) 0 calc(var(--dot-size)/2),
+      transparent calc(var(--dot-size)/2 + .1px) 100%);
+    background-size:var(--dot-gap) var(--dot-gap);
+    mix-blend-mode:soft-light;opacity:var(--ht-focus-opacity);filter:blur(var(--ht-blur));
+  }
+
+  .bubble{
+    position:absolute;z-index:3;max-width:min(480px,78%);
+    padding:18px 20px;color:#fff;background:var(--bubble-bg);
+    border:1px solid var(--bubble-stroke);box-shadow:var(--bubble-shadow);
+    backdrop-filter:blur(var(--bubble-blur)) saturate(160%);
+    -webkit-backdrop-filter:blur(var(--bubble-blur)) saturate(160%);
+    border-radius:18px;font-size:15px;line-height:1.45;
+    opacity:0;transform:translateY(10px) scale(.98);animation:bubble-in .35s var(--e) forwards;
+  }
+  .bubble .meta{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.22em;opacity:.85;}
+  .bubble .title{font-weight:800;margin-bottom:6px;font-size:16px;}
+  .bubble .body{opacity:.95;}
+  @keyframes bubble-in{to{opacity:1;transform:translateY(0) scale(1);}}
+
+  .cursor{
+    position:fixed;width:var(--cursor-size);height:var(--cursor-size);
+    margin-left:calc(var(--cursor-size)*-0.5);margin-top:calc(var(--cursor-size)*-0.5);
+    left:0;top:0;background:url("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQf2pHfZpXPHeFBfFgeaZj_UEz2St37G1eEOQ&s") no-repeat center/contain;
+    mix-blend-mode:difference;pointer-events:none;z-index:9999;will-change:transform;
+  }
+
+  /* Glass About Bar */
+  .about-bar{
+    position:fixed;left:0;right:0;top:0;
+    transform:translateY(-110%);opacity:0;
+    transition:transform .4s var(--e),opacity .3s ease;
+    z-index:9998;
+    background:var(--about-bg);
+    border-bottom:1px solid var(--about-stroke);
+    box-shadow:var(--about-shadow);
+    backdrop-filter:blur(var(--about-blur)) saturate(140%);
+    -webkit-backdrop-filter:blur(var(--about-blur)) saturate(140%);
+  }
+  .about-bar.is-visible{transform:translateY(0);opacity:1;}
+  .about-inner{display:flex;align-items:center;gap:16px;padding:14px clamp(16px,4vw,28px);}
+  .about-logo{width:36px;height:36px;border-radius:10px;
+    background:linear-gradient(135deg,#ffbf5e,#ff6a88);
+    border:1px solid rgba(255,255,255,.35);}
+  .about-title{font-weight:800;font-size:18px;}
+  .about-dot{color:var(--about-accent);margin:0 8px;}
+  .about-copy{font-size:14px;opacity:.92;line-height:1.35;}
+  .about-close{margin-left:auto;border:none;color:#fff;background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.35);padding:8px 12px;border-radius:12px;cursor:pointer;}
+  .about-close:hover{background:rgba(255,255,255,.22);}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute;visibility:hidden">
+  <filter id="bitmapify" color-interpolation-filters="sRGB">
+    <feColorMatrix type="saturate" values="1"/>
+    <feComponentTransfer>
+      <feFuncR type="discrete" tableValues="0 .11 .22 .33 .44 .55 .66 .77 .88 1"/>
+      <feFuncG type="discrete" tableValues="0 .11 .22 .33 .44 .55 .66 .77 .88 1"/>
+      <feFuncB type="discrete" tableValues="0 .11 .22 .33 .44 .55 .66 .77 .88 1"/>
+    </feComponentTransfer>
+  </filter>
+</svg>
+
+<!-- About bar -->
+<div class="about-bar" id="aboutBar">
+  <div class="about-inner">
+    <div class="about-logo"></div>
+    <div class="about-title">Foil & Fire</div>
+    <div class="about-dot">•</div>
+    <div class="about-copy">
+      A living poster of New York’s street-food carts through color and time — built for visual designers, photographers, and urban food lovers who see motion as art.
+    </div>
+    <button class="about-close" id="aboutClose">✕</button>
+  </div>
+</div>
+
+<div class="stage"><div class="slices" id="slices"></div></div>
+<div class="cursor" id="cursor"></div>
+
+<script>
+/* palette + band/time config (same as before) */
+const SLIVERS=20;
+const grid=document.getElementById('slices');
+const palette=['#1d2948','#1d2440','#202946','#2d3d64','#456194','#526da4','#54669a','#716696','#905470','#99484c','#ae4e41','#9f4a47','#915b78','#6c81b1','#7b7994','#a88771','#a38166','#a58878','#ad8b70','#a28468'];
+const bands=[{name:'Night',start:0,end:4},{name:'Sunrise',start:5,end:8},{name:'Day',start:9,end:14},{name:'Sunset',start:15,end:19}];
+const bandForIndex=i=>bands.find(b=>i>=b.start&&i<=b.end)||bands[0];
+const hourLabelFromIndex=i=>{const h=i%24,n=(h+1)%24;return`${(h%12||12)}${h>=12?' PM':' AM'}–${(n%12||12)}${n>=12?' PM':' AM'}`};
+const cartMakes=["Chrome halal cart","Sabrett hot-dog pushcart","Compact kati-roll cart","Taco plancha cart","Churro fryer cart","Bagel & urn stand","Chai trolley","Tamales steamer","Momo trays","Kebab skewer cart","Falafel fryer","Birria griddle","Momo griddle","Pupusa comal","Bao steamer","Rotating kebab cart","Dumpling wok","Arepa plancha","Sushi sidewalk bench","Paneer roll cart"];
+const narrationByTime={Night:["Neon flickers on steel as steam curls into the quiet street.","Taxi headlights sweep past while the umbrella knocks in the wind."],Sunrise:["Chai fogs the glass while commuters swap coins for warmth.","Bread toasts, birds argue, and the city blinks awake."],Day:["Orders fly in shorthand and muscle memory.","Lunch hour thunders; a bell rings and a dozen lids lift."],Sunset:["Golden light slicks the steel; smoke tastes sweet and new.","The city exhales; skewers hiss and stories lengthen."]};
+const narrations=Array.from({length:SLIVERS},(_,i)=>{const b=bandForIndex(i).name;return narrationByTime[b][i%narrationByTime[b].length]});
+
+/* build slivers */
+for(let i=0;i<SLIVERS;i++){const d=document.createElement('div');d.className='sliver';d.dataset.i=i;d.style.backgroundPosition=`${(i/(SLIVERS-1))*100}% 50%`;d.style.setProperty('--slice-tint',palette[i]);d.style.setProperty('--slice-ht',palette[i]);d.addEventListener('click',e=>activate(i,e));grid.appendChild(d);}
+const spacer=document.createElement('div');spacer.className='focus-spacer';const content=document.createElement('div');content.className='focus-content';spacer.appendChild(content);
+function templateWithSpacer(afterIndex){const thin=getComputedStyle(document.documentElement).getPropertyValue('--thin').trim();const active=getComputedStyle(document.documentElement).getPropertyValue('--active').trim();const parts=[];for(let k=0;k<SLIVERS;k++){parts.push(k===afterIndex?active:thin);if(k===afterIndex)parts.push(`var(--focus-gap)`);}return parts.join(' ');}
+let currentIndex=-1;const activeRects=[];
+function clearBubbles(){document.querySelectorAll('.bubble').forEach(b=>b.remove());activeRects.length=0;}
+function activate(i,evt){if(spacer.isConnected)spacer.remove();grid.children[i].insertAdjacentElement('afterend',spacer);grid.style.gridTemplateColumns=templateWithSpacer(i);content.style.backgroundImage=`url("image${i+1}.png")`;content.style.setProperty('--focus-tint',palette[i]);content.style.setProperty('--focus-ht',palette[i]);clearBubbles();currentIndex=i;spawnBubble(evt);}
+function reset(){if(spacer.isConnected)spacer.remove();grid.style.gridTemplateColumns=`repeat(${SLIVERS},var(--rest))`;clearBubbles();currentIndex=-1;}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){reset();hideAbout();}});
+
+function overlaps(a,b,m=10){return!(a.x+a.w+m<b.x||b.x+b.w+m<a.x||a.y+a.h+m<b.y||b.y+b.h+m<a.y);}
+function findSlot(x,y0,w,h){const pad=18,maxX=content.clientWidth-w-pad,maxY=content.clientHeight-h-pad;x=Math.max(pad,Math.min(x,maxX));const step=Math.max(14,Math.floor(h*.6)),ys=[y0];for(let k=1;k<60;k++){const up=y0-k*step,dn=y0+k*step;if(up>=pad)ys.push(up);if(dn<=maxY)ys.push(dn);}for(const y of ys){const c={x,y,w,h};if(!activeRects.some(r=>overlaps(c,r)))return{x,y}}return{x,y:maxY}}
+function createBubble({x,y,band,hour,make,narr}){const b=document.createElement('div');b.className='bubble';b.innerHTML=`<div class="meta">${band} • ${hour}</div><div class="title">${make}</div><div class="body">${narr}</div>`;content.appendChild(b);const {width:w,height:h}=b.getBoundingClientRect();const s=findSlot(x,y,w,h);b.style.left=`${s.x}px`;b.style.top=`${s.y}px`;activeRects.push({x:s.x,y:s.y,w,h,el:b});setTimeout(()=>b.style.opacity=0,5000);setTimeout(()=>b.remove(),5800);}
+function spawnBubble(evt){if(currentIndex<0)return;const r=content.getBoundingClientRect();const cx=evt.clientX-r.left,cy=evt.clientY-r.top;const band=bandForIndex(currentIndex).name;createBubble({x:cx,y:cy,band,hour:hourLabelFromIndex(currentIndex),make:cartMakes[currentIndex],narr:narrations[currentIndex]});}
+
+/* cursor + about bar */
+const cursor=document.getElementById('cursor');const aboutBar=document.getElementById('aboutBar');const aboutClose=document.getElementById('aboutClose');
+function showAbout(){aboutBar.classList.add('is-visible');}
+function hideAbout(){aboutBar.classList.remove('is-visible');}
+window.addEventListener('mousemove',e=>{cursor.style.transform=`translate(${e.clientX}px,${e.clientY}px)`;if(e.clientX<=14){showAbout();}else if(aboutBar.classList.contains('is-visible')&&!aboutBar.matches(':hover')){hideAbout();}});
+aboutBar.addEventListener('mouseleave',hideAbout);aboutClose.addEventListener('click',hideAbout);
+</script>
+</body>
+</html>

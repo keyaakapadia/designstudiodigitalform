@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>draft3</title>
+<style>
+  :root{
+    --slivers: 20;
+    --height: 100vh;
+    --thin: .55fr;
+    --active: .95fr;
+    --rest: 1fr;
+    --focus-gap: min(72vw, 1200px);
+    --t: 480ms;
+    --e: cubic-bezier(.2,.75,.2,1);
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{
+    height:100%;
+    overflow:hidden;
+    background:#000;
+    color:#fff;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  }
+
+  .stage{height:var(--height);display:flex;align-items:stretch}
+  .slices{
+    width:100vw;height:100%;
+    display:grid; grid-template-columns:repeat(var(--slivers), var(--rest));
+    transition:grid-template-columns var(--t) var(--e);
+    will-change:grid-template-columns;
+  }
+
+  /* Landing: each sliver is a slice of image.png */
+  .sliver{
+    background-image:url("image.png");
+    background-repeat:no-repeat;
+    background-size:calc(var(--slivers)*100%) 100%;
+    background-position:center;
+    cursor:pointer;
+    transition:filter var(--t) var(--e), transform 360ms ease;
+    filter:brightness(.98) contrast(1.03);
+  }
+  .sliver:hover{ filter:brightness(1.06) contrast(1.06); transform:scale(1.01); }
+  .sliver.is-active{ filter:brightness(1.08) contrast(1.08); z-index:2; }
+
+  /* Focus panel (only added after click). Default is SOLID BLACK. */
+  .focus-spacer{ position:relative; background:transparent; pointer-events:auto; overflow:hidden; }
+  .focus-content{
+    position:absolute; inset:0;
+    background:#000;               /* <- black placeholder */
+    background-position:center;
+    background-size:cover;
+    background-repeat:no-repeat;
+  }
+
+  /* Pop-up bubbles (non-overlapping) */
+  .bubble{
+    position:absolute; z-index:2;
+    max-width:min(360px, 70%);
+    padding:14px 16px;
+    background:#fff; color:#111;
+    border:2px solid #111; border-radius:22px;
+    filter:drop-shadow(0 8px 25px rgba(0,0,0,.45));
+    font-size:14px; line-height:1.25;
+    opacity:0; transform:translateY(8px) scale(.98);
+    animation:bubble-in .45s var(--e) forwards;
+  }
+  .bubble .title{ font-weight:800; margin-bottom:6px; font-size:15px; }
+  .bubble.left::after, .bubble.right::after{
+    content:""; position:absolute; bottom:-12px;
+    width:22px; height:22px; background:#fff;
+    border-left:2px solid #111; border-bottom:2px solid #111;
+    transform:rotate(45deg);
+  }
+  .bubble.left::after{ left:22px; }
+  .bubble.right::after{ right:22px; }
+
+  @keyframes bubble-in { to { opacity:1; transform:translateY(0) scale(1); } }
+  .bubble.fadeout{ transition:opacity .6s ease, transform .6s ease; opacity:0; transform:translateY(-6px); }
+
+  @media (max-width:700px){
+    :root{ --thin:.65fr; --active:.9fr; --focus-gap:min(85vw, 900px); }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="slices" id="slices"></div>
+</div>
+
+<script>
+  const SLIVERS = 20;
+  const grid = document.getElementById('slices');
+
+  /* ---------- Hour labels: 0 = 12 AM–1 AM, … 19 = 7 PM–8 PM ---------- */
+  function hourLabelFromIndex(i){
+    const h = i % 24;
+    const next = (h + 1) % 24;
+    return `${formatHour(h)}–${formatHour(next)}`;
+  }
+  function formatHour(h){
+    const isPM = h >= 12;
+    const base = h % 12 === 0 ? 12 : (h % 12);
+    return `${base} ${isPM ? 'PM' : 'AM'}`;
+  }
+
+  /* ---------- Per-sliver unique stories ---------- */
+  const cartNames = [
+    'Midnight Halal','After Hours Noodles','Night Kati','Owl Taco','Churro Comet',
+    'Bagel Planet','Sunrise Chaat','Tamalito Express','Morning Momo','Early Kebab',
+    'Falafel & Co.','Taco Rápido','Momo Lane','Pupusa Corner','Bao Stop',
+    'Kebab Cartel','Dumpling Dot','Arepa Mile','Sushi Sidewalk','Kathi Corner'
+  ];
+  const specialties = [
+    'chicken over rice, white sauce',
+    'wok noodles with chili crisp',
+    'egg kati with green chutney',
+    'al pastor with pineapple',
+    'warm churros, cinnamon sugar',
+    'sesame bagels & hot coffee',
+    'masala chai & bun maska',
+    'corn tamales & café de olla',
+    'steamed momos, spicy chutney',
+    'charcoal kebabs & saffron rice',
+    'herby falafel with pickles',
+    'birria tacos & consommé',
+    'chicken momos, tomato achar',
+    'bean & cheese pupusas',
+    'fluffy bao, black vinegar',
+    'lamb kebabs, sumac onions',
+    'crispy dumplings, soy & garlic',
+    'griddled arepas, queso',
+    'street sushi rolls',
+    'paneer kathi rolls'
+  ];
+  const linePoolA = [
+    "Foil crackles louder than traffic.",
+    "Steam smells like home.",
+    "We trade names and spice levels.",
+    "Pickles, herbs, a squeeze of lemon.",
+    "White sauce first, then heat.",
+    "Stories travel faster than the smoke.",
+    "First pour wakes the block.",
+    "Sizzle meets the subway rumble.",
+    "Five minutes — I’ll call your name.",
+    "Golden hour paints the foil."
+  ];
+  const linePoolB = [
+    "Cash crinkles; grill whispers.",
+    "You’ll make it — take this for the walk.",
+    "Add sauce? Trust me.",
+    "Share a skewer, save a story.",
+    "Regulars recognized by footsteps.",
+    "Next time, bring a friend.",
+    "We’re here till the lights blink.",
+    "Two minutes, almost ready.",
+    "Card or cash, love?",
+    "Take a seat on the curb."
+  ];
+  const stories = Array.from({length: SLIVERS}, (_, i) => {
+    const hour = hourLabelFromIndex(i);
+    const title = `${cartNames[i]} — ${hour}`;
+    const lines = [
+      `Hour ${hour}: special is ${specialties[i]}.`,
+      linePoolA[i % linePoolA.length],
+      linePoolB[(i * 3) % linePoolB.length]
+    ];
+    return { title, lines, nextLineIdx: 0 };
+  });
+
+  /* ---------- Build landing slivers (image.png sprite) ---------- */
+  const slivers = [];
+  for (let i = 0; i < SLIVERS; i++) {
+    const d = document.createElement('div');
+    d.className = 'sliver';
+    d.dataset.i = i;
+    d.style.backgroundPosition = `${(i/(SLIVERS-1))*100}% 50%`;
+    d.addEventListener('click', (e)=>activate(i, e));
+    grid.appendChild(d);
+    slivers.push(d);
+  }
+
+  /* ---------- Focus area (BLACK placeholder; no image shown on click) ---------- */
+  const spacer = document.createElement('div');
+  spacer.className = 'focus-spacer';
+  const content = document.createElement('div');
+  content.className = 'focus-content';   // black by default
+  spacer.appendChild(content);
+
+  function templateWithSpacer(afterIndex){
+    const cs = getComputedStyle(document.documentElement);
+    const thin   = cs.getPropertyValue('--thin').trim();
+    const active = cs.getPropertyValue('--active').trim();
+    const parts  = [];
+    for (let k=0;k<SLIVERS;k++){
+      parts.push(k===afterIndex ? active : thin);
+      if (k===afterIndex) parts.push(`var(--focus-gap)`);
+    }
+    return parts.join(' ');
+  }
+
+  let currentIndex = -1;
+
+  function activate(i, evt){
+    // Insert black focus panel next to clicked sliver
+    if (spacer.isConnected) spacer.remove();
+    slivers[i].insertAdjacentElement('afterend', spacer);
+    slivers.forEach((el, idx)=> el.classList.toggle('is-active', idx===i));
+    grid.style.gridTemplateColumns = templateWithSpacer(i);
+
+    // IMPORTANT: keep it BLACK — do not show any image.
+    content.style.backgroundColor = '#000';
+    content.style.backgroundImage = 'none';
+
+    // Reset bubble collisions & remember active sliver
+    activeRects.length = 0;
+    currentIndex = i;
+
+    // Bubbles ONLY for this sliver
+    spawnClickBubble(evt);
+    burstForCurrent();
+  }
+
+  function reset(){
+    if (spacer.isConnected) spacer.remove();
+    grid.style.gridTemplateColumns = `repeat(${SLIVERS}, var(--rest))`;
+    slivers.forEach(el=> el.classList.remove('is-active'));
+    activeRects.length = 0;
+    currentIndex = -1;
+  }
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') reset(); });
+  document.body.addEventListener('click', e=>{
+    if (!e.target.classList.contains('sliver') &&
+        !e.target.classList.contains('bubble') &&
+        spacer.isConnected) reset();
+  });
+
+  /* ---------------- NON-OVERLAPPING BUBBLES ---------------- */
+  const activeRects = [];
+
+  function overlaps(a,b,margin=10){
+    return !(
+      a.x + a.w + margin < b.x ||
+      b.x + b.w + margin < a.x ||
+      a.y + a.h + margin < b.y ||
+      b.y + b.h + margin < a.y
+    );
+  }
+  function findFreeSlot(x, y0, w, h, side){
+    const pad = 18;
+    const maxX = content.clientWidth - w - pad;
+    const maxY = content.clientHeight - h - pad;
+    let xFixed = Math.max(pad, Math.min(x, maxX));
+    if (side === 'left')  xFixed = pad + 6;
+    if (side === 'right') xFixed = content.clientWidth - w - pad - 6;
+
+    const step = Math.max(14, Math.floor(h * 0.6));
+    const yStart = Math.max(pad, Math.min(y0, maxY));
+    const candidates = [yStart];
+    for (let k=1;k<80;k++){
+      const yUp = yStart - k*step, yDn = yStart + k*step;
+      if (yUp  >= pad) candidates.push(yUp);
+      if (yDn  <= maxY) candidates.push(yDn);
+      if (yUp < pad && yDn > maxY) break;
+    }
+    for (const y of candidates){
+      const c = {x:xFixed,y,w,h};
+      let ok = true; for (const r of activeRects){ if (overlaps(c,r)) { ok=false; break; } }
+      if (ok) return {x:xFixed,y};
+    }
+    return {x:xFixed,y:maxY};
+  }
+
+  function createBubble({x,y,side,title,lines}){
+    const b = document.createElement('div');
+    b.className = `bubble ${side}`;
+    b.innerHTML = `<div class="title">${escapeHtml(title)}</div><div class="body">${lines.map(s=>escapeHtml(s)).join('<br>')}</div>`;
+    b.style.left='-9999px'; b.style.top='-9999px';
+    content.appendChild(b);
+
+    const bw=b.offsetWidth, bh=b.offsetHeight;
+    const slot = findFreeSlot(x ?? 24, y ?? 40, bw, bh, side);
+    b.style.left = slot.x+'px';
+    b.style.top  = slot.y+'px';
+
+    const ref = {x:slot.x,y:slot.y,w:bw,h:bh,el:b};
+    activeRects.push(ref);
+
+    const fadeMs = 4600 + Math.random()*1200;
+    const killMs = fadeMs + 800;
+    setTimeout(()=> b.classList.add('fadeout'), fadeMs);
+    setTimeout(()=>{
+      b.remove();
+      const idx = activeRects.findIndex(r=>r.el===b);
+      if (idx>-1) activeRects.splice(idx,1);
+    }, killMs);
+    return b;
+  }
+  const escapeHtml = s => s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+  /* ---------------- Story helpers (ONLY current sliver) ---------------- */
+  function nextLinesForSliver(i, count=1){
+    const s = stories[i];
+    const out = [];
+    for (let k=0;k<count;k++){
+      out.push(s.lines[s.nextLineIdx % s.lines.length]);
+      s.nextLineIdx++;
+    }
+    return out;
+  }
+
+  function spawnClickBubble(evt){
+    if (currentIndex<0 || !evt) return;
+    const rect = content.getBoundingClientRect();
+    const cx = Math.max(0, Math.min(evt.clientX - rect.left, rect.width));
+    const cy = Math.max(0, Math.min(evt.clientY - rect.top, rect.height));
+    const side = (cx < rect.width/2) ? 'left' : 'right';
+
+    const s = stories[currentIndex];
+    createBubble({
+      x: cx, y: cy, side,
+      title: s.title,
+      lines: nextLinesForSliver(currentIndex, 2) // 2 lines at click
+    });
+  }
+
+  function burstForCurrent(){
+    if (currentIndex<0) return;
+    const s = stories[currentIndex];
+    const count = 2 + Math.floor(Math.random()*2); // 2–3 more bubbles
+    let leftSide = Math.random()<0.5;
+
+    for (let k=0;k<count;k++){
+      setTimeout(()=>{
+        const side = leftSide ? 'left' : 'right';
+        leftSide = !leftSide;
+        const sideX = (side==='left') ? 24 : content.clientWidth - 280;
+        const ySeed = 40 + Math.random()*(content.clientHeight - 120);
+
+        createBubble({
+          x: sideX, y: ySeed, side,
+          title: s.title,
+          lines: nextLinesForSliver(currentIndex, 1 + (Math.random()<0.5?1:0)) // 1–2 lines
+        });
+      }, 450 + k*900 + Math.random()*250);
+    }
+  }
+</script>
+</body>
+</html>
